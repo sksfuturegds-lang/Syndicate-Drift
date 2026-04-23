@@ -26,6 +26,15 @@ interface Player {
   velocity: Point;
 }
 
+interface PoliceCar {
+  x: number;
+  y: number;
+  angle: number;
+  velocity: Point;
+  active: boolean;
+  spawnTime: number;
+}
+
 interface Particle {
   x: number;
   y: number;
@@ -81,8 +90,11 @@ export const NeonDriftGame: React.FC<{
     keys: {} as { [key: string]: boolean },
     particles: [] as Particle[],
     trail: [] as TrailPoint[],
+    policeCars: [] as PoliceCar[],
+    lastPoliceSpawnScore: 0,
     lives: 3,
     invincibility: 0,
+    cameraShake: 0,
   });
 
   const lastTimeRef = useRef<number>(0);
@@ -95,6 +107,8 @@ export const NeonDriftGame: React.FC<{
   const engineGainRef = useRef<GainNode | null>(null);
   const driftNoiseRef = useRef<AudioBufferSourceNode | null>(null);
   const driftGainRef = useRef<GainNode | null>(null);
+  const sirenOscRef = useRef<OscillatorNode | null>(null);
+  const sirenGainRef = useRef<GainNode | null>(null);
 
   const createNoiseBuffer = (ctx: AudioContext) => {
     const bufferSize = ctx.sampleRate * 2;
@@ -157,6 +171,17 @@ export const NeonDriftGame: React.FC<{
     source.start();
     driftNoiseRef.current = source;
     driftGainRef.current = dGain;
+
+    // Siren SFX
+    const sirenOsc = ctx.createOscillator();
+    const sirenGain = ctx.createGain();
+    sirenOsc.type = 'square';
+    sirenOsc.frequency.setValueAtTime(400, ctx.currentTime);
+    sirenGain.gain.setValueAtTime(0, ctx.currentTime);
+    sirenOsc.connect(sirenGain).connect(ctx.destination);
+    sirenOsc.start();
+    sirenOscRef.current = sirenOsc;
+    sirenGainRef.current = sirenGain;
 
     const tempo = 155;
     const stepTime = 60 / tempo / 2; // 1/8 note
@@ -257,6 +282,7 @@ export const NeonDriftGame: React.FC<{
     if (ctx) {
         if (engineGainRef.current) engineGainRef.current.gain.setTargetAtTime(0, ctx.currentTime, 0.1);
         if (driftGainRef.current) driftGainRef.current.gain.setTargetAtTime(0, ctx.currentTime, 0.1);
+        if (sirenGainRef.current) sirenGainRef.current.gain.setTargetAtTime(0, ctx.currentTime, 0.1);
         
         // Delay full stop slightly for ramp down
         setTimeout(() => {
@@ -269,6 +295,11 @@ export const NeonDriftGame: React.FC<{
             try { driftNoiseRef.current.stop(); } catch(e) {}
             driftNoiseRef.current.disconnect();
             driftNoiseRef.current = null;
+          }
+          if (sirenOscRef.current) {
+            try { sirenOscRef.current.stop(); } catch(e) {}
+            sirenOscRef.current.disconnect();
+            sirenOscRef.current = null;
           }
         }, 200);
     }
@@ -426,8 +457,11 @@ export const NeonDriftGame: React.FC<{
     gameRef.current.gameTime = 0;
     gameRef.current.particles = [];
     gameRef.current.trail = [];
+    gameRef.current.policeCars = [];
+    gameRef.current.lastPoliceSpawnScore = 0;
     gameRef.current.lives = 3;
     gameRef.current.invincibility = 0;
+    gameRef.current.cameraShake = 0;
     
     setScore(0);
     setLives(3);
@@ -485,6 +519,105 @@ export const NeonDriftGame: React.FC<{
       g.player.x += g.player.velocity.x;
       g.player.y += g.player.velocity.y;
 
+      // Police Car Logic
+      // Spawn police car every 40 points
+      if (g.score - g.lastPoliceSpawnScore > 40 && g.policeCars.length < 3) {
+        // Spawn behind player
+        const spawnDist = 400;
+        const spawnAngle = g.player.angle + Math.PI + (Math.random() - 0.5);
+        g.policeCars.push({
+          x: g.player.x + Math.cos(spawnAngle) * spawnDist,
+          y: g.player.y + Math.sin(spawnAngle) * spawnDist,
+          angle: g.player.angle,
+          velocity: { x: 0, y: 0 },
+          active: true,
+          spawnTime: g.gameTime
+        });
+        g.lastPoliceSpawnScore = g.score;
+      }
+
+      // Update Police Cars AI
+      g.policeCars.forEach(p => {
+        if (!p.active) return;
+
+        // Angle towards player
+        const targetAngle = Math.atan2(g.player.y - p.y, g.player.x - p.x);
+        
+        // Interpolate angle
+        let angleDiff = targetAngle - p.angle;
+        while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+        while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+        p.angle += angleDiff * 0.04;
+
+        // Acceleration
+        const pAccel = 0.25;
+        p.velocity.x += Math.cos(p.angle) * pAccel;
+        p.velocity.y += Math.sin(p.angle) * pAccel;
+        
+        // Friction
+        p.velocity.x *= 0.98;
+        p.velocity.y *= 0.98;
+
+        // Speed limit (police slightly faster if behind, or same)
+        const pMaxSpeed = MAX_SPEED * 1.05;
+        const pSpeed = Math.sqrt(p.velocity.x**2 + p.velocity.y**2);
+        if (pSpeed > pMaxSpeed) {
+          p.velocity.x = (p.velocity.x / pSpeed) * pMaxSpeed;
+          p.velocity.y = (p.velocity.y / pSpeed) * pMaxSpeed;
+        }
+
+        p.x += p.velocity.x;
+        p.y += p.velocity.y;
+
+        // Police distance check (despawn if too far away)
+        const distToPlayer = Math.sqrt((p.x - g.player.x)**2 + (p.y - g.player.y)**2);
+        if (distToPlayer > 1500) {
+          p.active = false;
+        }
+
+        // Collision with player
+        if (g.invincibility <= 0 && distToPlayer < 35) {
+          playCrashSound();
+          g.lives -= 1;
+          setLives(g.lives);
+          g.invincibility = 2000;
+          g.cameraShake = 20; // Trigger camera shake
+          
+          // Crash Particles (Fire/Explosion)
+          for (let i = 0; i < 15; i++) {
+            g.particles.push({
+              x: (p.x + g.player.x) / 2,
+              y: (p.y + g.player.y) / 2,
+              vx: (Math.random() - 0.5) * 15,
+              vy: (Math.random() - 0.5) * 15,
+              life: 1.0,
+              size: 10 + Math.random() * 10,
+              color: Math.random() > 0.5 ? '#ff4d00' : '#ffae00', // Orange/Fire
+            });
+          }
+
+          // Physics Bounce
+          const bounceAngle = Math.atan2(g.player.y - p.y, g.player.x - p.x);
+          const bounceForce = 12;
+          g.player.velocity.x = Math.cos(bounceAngle) * bounceForce;
+          g.player.velocity.y = Math.sin(bounceAngle) * bounceForce;
+
+          p.active = false; // Despawn after hit
+          
+          if (g.lives <= 0) {
+            setIsGameOver(true);
+            setIsPlaying(false);
+            const finalScore = Math.floor(g.score);
+            if (finalScore > highScore) {
+              localStorage.setItem('neon_drift_highscore', finalScore.toString());
+              setHighScore(finalScore);
+            }
+            onGameOver(finalScore);
+          }
+        }
+      });
+      g.policeCars = g.policeCars.filter(p => p.active);
+
       // Trail Recording
       if (g.gameTime % 2 === 0) {
         g.trail.push({ x: g.player.x, y: g.player.y, life: 1.0 });
@@ -495,6 +628,7 @@ export const NeonDriftGame: React.FC<{
       }
       
       if (g.invincibility > 0) g.invincibility -= deltaTime;
+      if (g.cameraShake > 0) g.cameraShake *= 0.9;
 
       // Particle Emission (Drift Smoke)
       const velAngle = Math.atan2(g.player.velocity.y, g.player.velocity.x);
@@ -563,6 +697,14 @@ export const NeonDriftGame: React.FC<{
               const targetDriftVol = Math.min(0.5, Math.max(0, (driftMagnitude - 3) / 6));
               driftGainRef.current.gain.setTargetAtTime(targetDriftVol, ctx_audio.currentTime, 0.05);
           }
+          if (sirenGainRef.current && sirenOscRef.current) {
+              const hasActivePolice = g.policeCars.some(p => p.active);
+              const targetSirenVol = hasActivePolice ? 0.1 : 0;
+              sirenGainRef.current.gain.setTargetAtTime(targetSirenVol, ctx_audio.currentTime, 0.2);
+              
+              const sirenFreq = 400 + Math.sin(time / 150) * 200;
+              sirenOscRef.current.frequency.setTargetAtTime(sirenFreq, ctx_audio.currentTime, 0.1);
+          }
       }
 
       // Collision
@@ -593,6 +735,11 @@ export const NeonDriftGame: React.FC<{
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
       ctx.save();
+      // Apply Camera Shake
+      if (g.cameraShake > 0.5) {
+        ctx.translate((Math.random() - 0.5) * g.cameraShake, (Math.random() - 0.5) * g.cameraShake);
+      }
+
       ctx.translate(canvas.width / 2, canvas.height / 2);
       ctx.translate(-g.player.x, -g.player.y);
 
@@ -821,6 +968,62 @@ export const NeonDriftGame: React.FC<{
 
           ctx.restore();
         }
+      });
+
+      // Draw Police Cars
+      g.policeCars.forEach(p => {
+        if (!p.active) return;
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.angle);
+
+        // Flashing Lights
+        const flash = Math.floor(time / 100) % 2 === 0;
+        
+        // Light Glows
+        const drawLight = (lx: number, ly: number, color: string, isActive: boolean) => {
+          if (!isActive) return;
+          ctx.save();
+          ctx.shadowBlur = 20;
+          ctx.shadowColor = color;
+          ctx.fillStyle = color;
+          ctx.globalAlpha = 0.6;
+          ctx.beginPath();
+          ctx.arc(lx, ly, 15, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        };
+
+        drawLight(10, -8, '#ff0000', flash);
+        drawLight(10, 8, '#0000ff', !flash);
+
+        // Car Body (Black/White)
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = 'rgba(0,0,0,0.5)';
+        ctx.fillStyle = '#111';
+        ctx.beginPath();
+        ctx.roundRect(-22, -14, 44, 28, 4);
+        ctx.fill();
+
+        // White Doors
+        ctx.fillStyle = '#eee';
+        ctx.fillRect(-8, -14, 16, 3);
+        ctx.fillRect(-8, 11, 16, 3);
+
+        // Police Text
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 6px sans-serif';
+        ctx.save();
+        ctx.rotate(Math.PI / 2);
+        ctx.textAlign = 'center';
+        ctx.fillText("POLICE", 0, 18);
+        ctx.restore();
+
+        // Roof Light Bar
+        ctx.fillStyle = flash ? '#ff0000' : '#0000ff';
+        ctx.fillRect(-2, -10, 4, 20);
+
+        ctx.restore();
       });
 
       // Center Line
