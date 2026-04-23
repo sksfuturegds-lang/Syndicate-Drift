@@ -75,6 +75,7 @@ export const NeonDriftGame: React.FC<{
   // UI State
   const [score, setScore] = useState(0);
   const [highScore, setHighScore] = useState(parseInt(localStorage.getItem('neon_drift_highscore') || '0'));
+  const [recentScores, setRecentScores] = useState<number[]>(JSON.parse(localStorage.getItem('neon_drift_recent_scores') || '[]'));
   const [isPlaying, setIsPlaying] = useState(false);
   const [isGameOver, setIsGameOver] = useState(false);
   const [showStory, setShowStory] = useState(false);
@@ -458,6 +459,20 @@ export const NeonDriftGame: React.FC<{
     }
   };
 
+  const saveScore = (newScore: number) => {
+    const updatedScores = [newScore, ...recentScores]
+      .sort((a, b) => b - a)
+      .slice(0, 5); // Keep top 5
+    setRecentScores(updatedScores);
+    localStorage.setItem('neon_drift_recent_scores', JSON.stringify(updatedScores));
+
+    if (newScore > highScore) {
+      localStorage.setItem('neon_drift_highscore', newScore.toString());
+      setHighScore(newScore);
+    }
+    onGameOver(newScore);
+  };
+
   const startGame = () => {
     initRoad();
     gameRef.current.player = { x: 0, y: 0, angle: -Math.PI / 2, velocity: { x: 0, y: 0 } };
@@ -629,11 +644,7 @@ export const NeonDriftGame: React.FC<{
             setIsGameOver(true);
             setIsPlaying(false);
             const finalScore = Math.floor(g.score);
-            if (finalScore > highScore) {
-              localStorage.setItem('neon_drift_highscore', finalScore.toString());
-              setHighScore(finalScore);
-            }
-            onGameOver(finalScore);
+            saveScore(finalScore);
           }
         }
       });
@@ -738,11 +749,7 @@ export const NeonDriftGame: React.FC<{
           setIsGameOver(true);
           setIsPlaying(false);
           const finalScore = Math.floor(g.score);
-          if (finalScore > highScore) {
-            localStorage.setItem('neon_drift_highscore', finalScore.toString());
-            setHighScore(finalScore);
-          }
-          onGameOver(finalScore);
+          saveScore(finalScore);
         } else {
           // Bounce back and invincibility
           g.invincibility = 1500;
@@ -1393,6 +1400,22 @@ export const NeonDriftGame: React.FC<{
             <div className="absolute inset-0 bg-white opacity-0 group-hover:opacity-5 transition-opacity" />
             <span className="relative text-white group-hover:text-cyan-400 font-bold tracking-[0.6em] text-sm transition-colors uppercase">Engage</span>
           </button>
+
+          {recentScores.length > 0 && (
+            <div className="mt-12 flex flex-col items-center">
+              <span className="text-[9px] uppercase tracking-[0.4em] text-pink-500 font-bold mb-4 opacity-70">Top System Records</span>
+              <div className="flex gap-4">
+                {recentScores.slice(0, 3).map((s, i) => (
+                  <div key={i} className="flex flex-col items-center min-w-[80px] bg-white/5 border border-white/5 p-3 rounded-lg">
+                    <span className="text-[8px] text-white/30 uppercase mb-1">#{i + 1}</span>
+                    <span className="text-sm font-black text-white tracking-tighter tabular-nums">
+                      {s.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",")}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -1466,8 +1489,24 @@ export const NeonDriftGame: React.FC<{
           <h2 id="game-over-title" className="text-8xl font-black text-white tracking-tighter uppercase italic transform -skew-x-12 mb-2">
             TERMINATED
           </h2>
-          <div id="final-score-display" className="text-cyan-400 font-black text-6xl mb-16 tracking-tighter">
+          <div id="final-score-display" className="text-cyan-400 font-black text-6xl mb-6 tracking-tighter">
             {score.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",")}
+          </div>
+
+          {/* LEADERBOARD */}
+          <div className="w-64 mb-10 bg-white/5 border border-white/10 rounded-xl p-4 backdrop-blur-md">
+            <h3 className="text-pink-500 font-black text-xs uppercase tracking-[0.3em] mb-4 text-center border-b border-white/10 pb-2">Top Runs</h3>
+            <div className="flex flex-col gap-2">
+              {recentScores.map((s, i) => (
+                <div key={i} className="flex justify-between items-center text-sm">
+                  <span className="text-white/40 font-mono text-[10px]">#{i+1}</span>
+                  <span className={`font-black ${i === 0 ? 'text-cyan-400' : 'text-white/80'}`}>
+                    {s.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",")}
+                  </span>
+                </div>
+              ))}
+              {recentScores.length === 0 && <div className="text-white/20 text-[10px] text-center uppercase tracking-widest">No Log Data</div>}
+            </div>
           </div>
           
           <div className="flex gap-4">
