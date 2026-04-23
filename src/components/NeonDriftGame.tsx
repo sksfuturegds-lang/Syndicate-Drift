@@ -419,11 +419,6 @@ export const NeonDriftGame: React.FC<{
     }
   };
 
-  const resetToMenu = () => {
-    setIsGameOver(false);
-    setIsPlaying(false);
-  };
-
   const startGame = () => {
     initRoad();
     gameRef.current.player = { x: 0, y: 0, angle: -Math.PI / 2, velocity: { x: 0, y: 0 } };
@@ -450,31 +445,12 @@ export const NeonDriftGame: React.FC<{
   };
 
   const checkCollision = (p: Player, road: RoadSegment[]) => {
-    // Car dimensions (matching render dimensions)
-    const length = 44; 
-    const width = 28;
-    const halfL = length / 2;
-    const halfW = width / 2;
-
-    // Check 4 corners of the car to ensure no part of the car body is off-road
-    const cosA = Math.cos(p.angle);
-    const sinA = Math.sin(p.angle);
-
-    const corners = [
-      { x: p.x + cosA * halfL - sinA * halfW, y: p.y + sinA * halfL + cosA * halfW }, // Front Right
-      { x: p.x + cosA * halfL + sinA * halfW, y: p.y + sinA * halfL - cosA * halfW }, // Front Left
-      { x: p.x - cosA * halfL - sinA * halfW, y: p.y - sinA * halfL + cosA * halfW }, // Rear Right
-      { x: p.x - cosA * halfL + sinA * halfW, y: p.y - sinA * halfL - cosA * halfW }, // Rear Left
-    ];
-
-    // If ANY corner is off-road, it's a collision
-    return corners.some(corner => {
-      const isCornerSafe = road.some(seg => {
-        const d = distToSegment(corner, seg.p1, seg.p2);
-        return d <= seg.width / 2;
-      });
-      return !isCornerSafe;
+    // Check if player is NOT within any road segment bounds
+    const isSafe = road.some(seg => {
+      const d = distToSegment(p, seg.p1, seg.p2);
+      return d <= seg.width / 2;
     });
+    return !isSafe; 
   };
 
   const loop = (time: number) => {
@@ -508,8 +484,6 @@ export const NeonDriftGame: React.FC<{
 
       g.player.x += g.player.velocity.x;
       g.player.y += g.player.velocity.y;
-
-      g.gameTime += 1;
 
       // Trail Recording
       if (g.gameTime % 2 === 0) {
@@ -607,28 +581,10 @@ export const NeonDriftGame: React.FC<{
           }
           onGameOver(finalScore);
         } else {
-          // Reset to center of closest road segment
-          let closestSeg = g.road[0];
-          let minDist = Infinity;
-          g.road.forEach(seg => {
-            const d = distToSegment(g.player, seg.p1, seg.p2);
-            if (d < minDist) {
-              minDist = d;
-              closestSeg = seg;
-            }
-          });
-
-          // Move to midpoint of the segment
-          g.player.x = (closestSeg.p1.x + closestSeg.p2.x) / 2;
-          g.player.y = (closestSeg.p1.y + closestSeg.p2.y) / 2;
-          
-          // Align angle with segment direction
-          const dx = closestSeg.p2.x - closestSeg.p1.x;
-          const dy = closestSeg.p2.y - closestSeg.p1.y;
-          g.player.angle = Math.atan2(dy, dx);
-          g.player.velocity = { x: 0, y: 0 };
-          
-          g.invincibility = 2000; // 2s recovery
+          // Bounce back and invincibility
+          g.invincibility = 1500;
+          g.player.velocity.x *= -0.5;
+          g.player.velocity.y *= -0.5;
         }
       }
 
@@ -884,11 +840,6 @@ export const NeonDriftGame: React.FC<{
       ctx.translate(g.player.x, g.player.y);
       ctx.rotate(g.player.angle);
 
-      // Car Flicker during invincibility
-      if (g.invincibility > 0 && (Math.floor(g.gameTime / 5) % 2 === 0)) {
-        ctx.globalAlpha = 0.3;
-      }
-
       const isSteeringLeft = g.keys['ArrowLeft'] || g.keys['KeyA'];
       const isSteeringRight = g.keys['ArrowRight'] || g.keys['KeyD'];
       const wheelAngle = isSteeringLeft ? -0.4 : (isSteeringRight ? 0.4 : 0);
@@ -1057,17 +1008,11 @@ export const NeonDriftGame: React.FC<{
           driftNoiseRef.current.disconnect();
           driftNoiseRef.current = null;
       }
-    };
-  }, [isPlaying, isGameOver]);
-
-  // Handle actual AudioContext destruction only on component unmount
-  useEffect(() => {
-    return () => {
-      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
-        audioContextRef.current.close().catch(() => {});
+      if (audioContextRef.current) {
+          audioContextRef.current.close();
       }
     };
-  }, []);
+  }, [isPlaying, isGameOver]);
 
   return (
     <div id="game-container" className="relative w-full h-full overflow-hidden bg-[#05060f] select-none font-sans text-white">
@@ -1229,27 +1174,15 @@ export const NeonDriftGame: React.FC<{
             {score.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",")}
           </div>
           
-          <div className="flex gap-6">
-            <button 
-              id="reboot-button"
-              onClick={startGame}
-              onMouseEnter={playHoverSound}
-              className="group relative px-12 py-6 pointer-events-auto"
-            >
-              <div className="absolute inset-0 bg-cyan-400 group-hover:bg-cyan-300 transition-colors rounded-xl" />
-              <span className="relative text-black font-black tracking-[0.2em] text-lg uppercase">Retry</span>
-            </button>
-
-            <button 
-              id="menu-button"
-              onClick={resetToMenu}
-              onMouseEnter={playHoverSound}
-              className="group relative px-12 py-6 pointer-events-auto"
-            >
-              <div className="absolute inset-0 border border-white/20 hover:border-white/40 transition-colors rounded-xl bg-white/5" />
-              <span className="relative text-white font-black tracking-[0.2em] text-lg uppercase">Menu</span>
-            </button>
-          </div>
+          <button 
+            id="reboot-button"
+            onClick={startGame}
+            onMouseEnter={playHoverSound}
+            className="group relative px-20 py-6 pointer-events-auto"
+          >
+            <div className="absolute inset-0 bg-white group-hover:bg-cyan-400 transition-colors rounded-xl" />
+            <span className="relative text-black font-black tracking-[0.5em] text-lg uppercase">Reboot</span>
+          </button>
 
           {score === highScore && score > 0 && (
             <div id="new-record-message" className="mt-10 text-pink-500 font-bold text-sm tracking-[0.4em] animate-pulse">
