@@ -77,6 +77,7 @@ export const NeonDriftGame: React.FC<{
   const [highScore, setHighScore] = useState(parseInt(localStorage.getItem('neon_drift_highscore') || '0'));
   const [isPlaying, setIsPlaying] = useState(false);
   const [isGameOver, setIsGameOver] = useState(false);
+  const [showStory, setShowStory] = useState(false);
   const [currentLevelName, setCurrentLevelName] = useState('EASY');
   const [lives, setLives] = useState(3);
 
@@ -467,7 +468,13 @@ export const NeonDriftGame: React.FC<{
     setLives(3);
     setIsPlaying(true);
     setIsGameOver(false);
+    setShowStory(false);
     onStart();
+  };
+
+  const handleEngageClick = () => {
+    playHoverSound();
+    setShowStory(true);
   };
 
   const distToSegment = (p: Point, v: Point, w: Point) => {
@@ -1337,7 +1344,7 @@ export const NeonDriftGame: React.FC<{
       </div>
 
       {/* MAIN MENU */}
-      {!isPlaying && !isGameOver && (
+      {!isPlaying && !isGameOver && !showStory && (
         <div id="main-menu" className="absolute inset-0 flex flex-col items-center justify-center z-50 bg-[#05060f]/60 backdrop-blur-sm">
           <div className="relative group">
             <h1 
@@ -1355,7 +1362,7 @@ export const NeonDriftGame: React.FC<{
           
           <button 
             id="start-button"
-            onClick={startGame}
+            onClick={handleEngageClick}
             onMouseEnter={playHoverSound}
             className="mt-16 group relative px-20 py-5 overflow-hidden pointer-events-auto"
           >
@@ -1363,6 +1370,69 @@ export const NeonDriftGame: React.FC<{
             <div className="absolute inset-0 bg-white opacity-0 group-hover:opacity-5 transition-opacity" />
             <span className="relative text-white group-hover:text-cyan-400 font-bold tracking-[0.6em] text-sm transition-colors uppercase">Engage</span>
           </button>
+        </div>
+      )}
+
+      {/* STORY SCREEN */}
+      {showStory && (
+        <div id="story-screen" className="absolute inset-0 flex flex-col items-center justify-center z-50 bg-black overflow-hidden p-8 px-4 sm:px-8">
+          {/* Halftone / Comic Background Texture */}
+          <div className="absolute inset-0 opacity-10 pointer-events-none bg-[radial-gradient(#ffffff_1px,transparent_1px)] [background-size:20px_20px]" />
+          
+          <div className="relative max-w-4xl w-full flex flex-col gap-6 transform skew-y-1">
+            {/* Header Panel */}
+            <div className="bg-yellow-400 p-4 border-4 border-black shadow-[8px_8px_0_0_rgba(0,0,0,1)] relative z-10 w-fit -rotate-2">
+              <h3 className="text-black font-black text-2xl sm:text-4xl italic uppercase tracking-tighter">MISSION LOG: NEON HEIST</h3>
+            </div>
+
+            {/* Main Comic Panel */}
+            <div className="flex flex-col sm:flex-row gap-6">
+              <div className="flex-1 bg-[#1a1a1a] border-4 border-white p-6 shadow-[12px_12px_0_0_rgba(219,39,119,0.5)] flex flex-col justify-center gap-4 relative overflow-hidden rotate-1 mt-4 sm:mt-0">
+                 {/* Action Line Decorations */}
+                <div className="absolute top-0 right-0 w-32 h-1 bg-white rotate-45 translate-x-10 translate-y-10" />
+                <div className="absolute bottom-0 left-0 w-48 h-1 bg-cyan-400 -rotate-12 -translate-x-10 -translate-y-10" />
+                
+                <p className="text-white text-lg sm:text-2xl font-bold leading-tight italic uppercase tracking-tight">
+                  <span className="text-cyan-400">STATUS:</span> HEIST COMPLETE. <br/>
+                  <span className="text-pink-500">ASSET:</span> NEURAL CORE PROTOCOL-X. <br/>
+                </p>
+                <div className="h-0.5 w-full bg-white/20" />
+                <p className="text-white/80 text-sm sm:text-base font-medium leading-relaxed uppercase tracking-widest">
+                  YOU BURST THROUGH THE SYNDICATE'S SECURE FACILITY. THE CORE IS SECURED, BUT THE ALARM IS TRIPPED. THE ENTIRE NEO-CITY POLICE FORCE IS DEPLOYING.
+                </p>
+                
+                {/* Speech Bubble Style Callout */}
+                <div className="absolute -top-4 -right-2 bg-pink-500 text-white font-black p-2 px-4 text-sm rotate-12 border-2 border-black animate-pulse">
+                  ALARM: CODE RED!
+                </div>
+              </div>
+
+              {/* Character/Target Panel */}
+              <div className="w-full sm:w-64 bg-cyan-400 border-4 border-black p-4 flex flex-col items-center justify-center shadow-[8px_8px_0_0_rgba(219,39,119,1)] -rotate-3 mt-4 sm:mt-0">
+                <div className="w-24 h-24 sm:w-32 sm:h-32 bg-black rounded-lg border-2 border-white mb-4 flex items-center justify-center overflow-hidden">
+                   <div className="w-full h-full bg-gradient-to-tr from-pink-500 via-transparent to-cyan-400 animate-pulse opacity-50" />
+                   <p className="absolute text-white font-black text-3xl">!!!</p>
+                </div>
+                <p className="text-black font-black text-center text-xs uppercase tracking-tighter leading-none">OBJECTIVE: <br/>SURVIVE THE DRIFT</p>
+              </div>
+            </div>
+
+            {/* Bottom Caption */}
+            <div className="self-end bg-white p-4 border-4 border-black shadow-[-8px_8px_0_0_rgba(0,243,255,1)] rotate-1 w-full sm:w-2/3">
+              <p className="text-black font-black italic text-base sm:text-xl uppercase leading-none">
+                "THERE'S ONLY ONE WAY OUT OF THE SECTOR. THROUGH THE HIGHWAY RIOT. FLOOD THE ENGINE. LIGHT UP THE TIRES. <span className="text-pink-600">DON'T STOP.</span>"
+              </p>
+            </div>
+
+            {/* Action Button */}
+            <button 
+              onClick={startGame}
+              onMouseEnter={playHoverSound}
+              className="mt-8 self-center bg-yellow-400 hover:bg-cyan-400 border-4 border-black p-6 px-16 shadow-[10px_10px_0_0_rgba(0,0,0,1)] hover:shadow-[5px_5px_0_0_rgba(0,0,0,1)] hover:translate-x-[5px] hover:translate-y-[5px] transition-all transform active:scale-95"
+            >
+               <span className="text-black font-black text-2xl uppercase italic tracking-tighter">IGNITION!</span>
+            </button>
+          </div>
         </div>
       )}
 
