@@ -102,6 +102,7 @@ export const NeonDriftGame: React.FC<{
   const requestRef = useRef<number>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioLoopRef = useRef<number | null>(null);
+  const cleanupTimeoutRef = useRef<number | null>(null);
 
   // SFX Nodes
   const engineOscRef = useRef<OscillatorNode | null>(null);
@@ -127,6 +128,11 @@ export const NeonDriftGame: React.FC<{
     const ctx = audioContextRef.current;
     if (ctx.state === 'suspended') {
       ctx.resume();
+    }
+
+    if (cleanupTimeoutRef.current) {
+        clearTimeout(cleanupTimeoutRef.current);
+        cleanupTimeoutRef.current = null;
     }
 
     // Stop existing loop if any
@@ -286,7 +292,7 @@ export const NeonDriftGame: React.FC<{
         if (sirenGainRef.current) sirenGainRef.current.gain.setTargetAtTime(0, ctx.currentTime, 0.1);
         
         // Delay full stop slightly for ramp down
-        setTimeout(() => {
+        cleanupTimeoutRef.current = window.setTimeout(() => {
           if (engineOscRef.current) {
             try { engineOscRef.current.stop(); } catch(e) {}
             engineOscRef.current.disconnect();
@@ -302,6 +308,7 @@ export const NeonDriftGame: React.FC<{
             sirenOscRef.current.disconnect();
             sirenOscRef.current = null;
           }
+          cleanupTimeoutRef.current = null;
         }, 200);
     }
   };
@@ -475,6 +482,13 @@ export const NeonDriftGame: React.FC<{
   const handleEngageClick = () => {
     playHoverSound();
     setShowStory(true);
+  };
+
+  const returnToMenu = () => {
+    setIsPlaying(false);
+    setIsGameOver(false);
+    setShowStory(false);
+    stopMusic();
   };
 
   const distToSegment = (p: Point, v: Point, w: Point) => {
@@ -1277,13 +1291,22 @@ export const NeonDriftGame: React.FC<{
           </div>
 
           {isPlaying && (
-            <button 
-              onClick={() => { playHoverSound(); startGame(); }}
-              onMouseEnter={playHoverSound}
-              className="bg-white/5 hover:bg-white/10 backdrop-blur-xl border border-white/10 px-6 py-3 rounded-xl pointer-events-auto transition-all text-[10px] font-bold tracking-[0.3em] text-cyan-400"
-            >
-              RESET RUN
-            </button>
+            <div className="flex gap-2">
+              <button 
+                onClick={() => { playHoverSound(); startGame(); }}
+                onMouseEnter={playHoverSound}
+                className="bg-white/5 hover:bg-white/10 backdrop-blur-xl border border-white/10 px-6 py-3 rounded-xl pointer-events-auto transition-all text-[10px] font-bold tracking-[0.3em] text-cyan-400"
+              >
+                RESET RUN
+              </button>
+              <button 
+                onClick={() => { playHoverSound(); returnToMenu(); }}
+                onMouseEnter={playHoverSound}
+                className="bg-white/5 hover:bg-white/10 backdrop-blur-xl border border-white/10 px-6 py-3 rounded-xl pointer-events-auto transition-all text-[10px] font-bold tracking-[0.3em] text-pink-500"
+              >
+                MAIN MENU
+              </button>
+            </div>
           )}
         </div>
       </div>
@@ -1426,7 +1449,7 @@ export const NeonDriftGame: React.FC<{
 
             {/* Action Button */}
             <button 
-              onClick={startGame}
+              onClick={() => { playHoverSound(); startGame(); }}
               onMouseEnter={playHoverSound}
               className="mt-8 self-center bg-yellow-400 hover:bg-cyan-400 border-4 border-black p-6 px-16 shadow-[10px_10px_0_0_rgba(0,0,0,1)] hover:shadow-[5px_5px_0_0_rgba(0,0,0,1)] hover:translate-x-[5px] hover:translate-y-[5px] transition-all transform active:scale-95"
             >
@@ -1447,15 +1470,27 @@ export const NeonDriftGame: React.FC<{
             {score.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",")}
           </div>
           
-          <button 
-            id="reboot-button"
-            onClick={startGame}
-            onMouseEnter={playHoverSound}
-            className="group relative px-20 py-6 pointer-events-auto"
-          >
-            <div className="absolute inset-0 bg-white group-hover:bg-cyan-400 transition-colors rounded-xl" />
-            <span className="relative text-black font-black tracking-[0.5em] text-lg uppercase">Reboot</span>
-          </button>
+          <div className="flex gap-4">
+            <button 
+              id="reboot-button"
+              onClick={() => { playHoverSound(); startGame(); }}
+              onMouseEnter={playHoverSound}
+              className="group relative px-12 py-5 pointer-events-auto"
+            >
+              <div className="absolute inset-0 bg-white group-hover:bg-cyan-400 transition-colors rounded-xl" />
+              <span className="relative text-black font-black tracking-[0.5em] text-sm uppercase">Reboot</span>
+            </button>
+
+            <button 
+              id="menu-button"
+              onClick={() => { playHoverSound(); returnToMenu(); }}
+              onMouseEnter={playHoverSound}
+              className="group relative px-12 py-5 pointer-events-auto"
+            >
+              <div className="absolute inset-0 border-2 border-white group-hover:bg-white/10 transition-colors rounded-xl" />
+              <span className="relative text-white font-black tracking-[0.5em] text-sm uppercase">Menu</span>
+            </button>
+          </div>
 
           {score === highScore && score > 0 && (
             <div id="new-record-message" className="mt-10 text-pink-500 font-bold text-sm tracking-[0.4em] animate-pulse">
